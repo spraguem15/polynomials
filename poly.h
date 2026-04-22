@@ -33,7 +33,7 @@ public:
     polynomial(Iter begin, Iter end)
     {
        Iter it = begin;
-       While (it != end)
+       while (it != end)
        {
         terms.push_back(*it);
         it++;
@@ -86,6 +86,12 @@ public:
      * 1. polynomial % polynomial
      */
     polynomial operator*(const polynomial &other);
+    polynomial operator*(int value) const;
+
+    polynomial operator+(const polynomial &other) const;
+    polynomial operator+(int value) const;
+
+    polynomial operator%(const polynomial &other) const;
     
 
     /**
@@ -94,7 +100,7 @@ public:
      * @return size_t
      *  The degree of the polynomial
      */
-    size_t find_degree_of();
+    size_t find_degree_of() const;
 
     /**
      * @brief Returns a vector that contains the polynomial is canonical form. This
@@ -118,5 +124,8 @@ public:
      */
     std::vector<std::pair<power, coeff>> canonical_form() const;
 };
+
+polynomial operator+(int value, const polynomial &poly);
+polynomial operator*(int value, const polynomial &poly);
 
 #endif
