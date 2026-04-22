@@ -85,6 +85,7 @@ public:
      * Modulo (%) should support
      * 1. polynomial % polynomial
      */
+    polynomial operator*(const polynomial &other);
     
 
     /**

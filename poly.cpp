@@ -73,3 +73,23 @@ std::vector<std::pair<power, coeff>> polynomial::canonical_form() const
 
     return result;
 }
+
+
+polynomial polynomial::operator*(const polynomial &other)
+{
+    polynomial product;
+
+    for (const auto &i : this->terms)
+    {
+        for (const auto &j : other.terms)
+        {
+            if (i.first == 0 && i.second == 0)
+            {
+                product.terms.push_back({0,0});
+                break;
+            }
+            product.terms.push_back({i.first + j.first, i.second * j.second});
+        }
+    }
+    return product;
+}
