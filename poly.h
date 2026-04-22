@@ -10,7 +10,8 @@ using coeff = int;
 
 class polynomial
 {
-
+private:
+    std::vector<std::pair<power, coeff>> terms;
 public:
     /**
      * @brief Construct a new polynomial object that is the number 0 (ie. 0x^0)
@@ -29,7 +30,15 @@ public:
      *  The end of the container to copy elements from
      */
     template <typename Iter>
-    polynomial(Iter begin, Iter end);
+    polynomial(Iter begin, Iter end)
+    {
+       Iter it = begin;
+       While (it != end)
+       {
+        terms.push_back(*it);
+        it++;
+       }
+    }
 
     /**
      * @brief Construct a new polynomial object from an existing polynomial object
