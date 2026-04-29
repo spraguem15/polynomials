@@ -13,6 +13,9 @@ class polynomial
 private:
     std::vector<std::pair<power, coeff>> terms;
 public:
+
+    friend void* multiplication_thread(void* arg);
+
     /**
      * @brief Construct a new polynomial object that is the number 0 (ie. 0x^0)
      *
@@ -85,7 +88,9 @@ public:
      * Modulo (%) should support
      * 1. polynomial % polynomial
      */
-    polynomial operator*(const polynomial &other);
+
+
+    polynomial operator*(const polynomial &other) const;
     polynomial operator*(int value) const;
 
     polynomial operator+(const polynomial &other) const;

@@ -1,4 +1,4 @@
-#include <poly.h>
+#include "poly.h"
 #include <vector>
 #include <utility>
 #include <cstddef>
@@ -6,9 +6,19 @@
 #include <algorithm>
 #include <iostream>
 #include <stdexcept>
+#include <pthread.h>
+#include <cmath>
 
 using power = size_t;
 using coeff = int;
+
+struct ThreadData {
+    const polynomial* subset_data;
+    const polynomial* full_data;
+    int start;
+    int end;
+    std::vector<std::pair<power, coeff>>* result;
+};
 
 polynomial::polynomial()
 {
@@ -80,24 +90,113 @@ std::vector<std::pair<power, coeff>> polynomial::canonical_form() const
     return result;
 }
 
-
-polynomial polynomial::operator*(const polynomial &other)
+void* multiplication_thread(void* arg)
 {
-    polynomial product;
+    ThreadData* data = static_cast<ThreadData*>(arg);
+    const auto& sub_terms = data->subset_data->terms;
+    const auto& full_terms = data->full_data->terms;
 
-    for (const auto &i : this->terms)
+    std::map<power, coeff> local;
+
+    for (int i = data->start; i < data->end; i++)
     {
-        for (const auto &j : other.terms)
+        for (auto& j : full_terms)
         {
-            if (i.first == 0 && i.second == 0)
-            {
-                product.terms.push_back({0,0});
-                break;
-            }
-            product.terms.push_back({i.first + j.first, i.second * j.second});
+            power exp = sub_terms[i].first + j.first;
+            coeff val = sub_terms[i].second + j.second;
+
+            local[exp] += val;
         }
     }
+
+    for (const auto& terms : local)
+    {
+        data->result->push_back({terms.first, terms.second});
+    }
+
+    return nullptr;
+}
+
+polynomial polynomial::operator*(const polynomial &other) const
+{
+    polynomial product;
+    int terms = this->terms.size();
+    int other_terms = other.terms.size();
+
+    if ((terms * other_terms) >= 10000)
+    {
+        int num_threads = 12;
+        int thread_workload = terms / num_threads;
+        int last_workload = thread_workload + (terms % num_threads);
+
+        std::vector<pthread_t> threads(num_threads);
+        std::vector<ThreadData> thread_data(num_threads);
+        std::vector<std::vector<std::pair<power, coeff>>> temp(num_threads);
+
+        int start = 0;
+        int end, remainder;
+
+        for (int i = 0; i < num_threads; i++) 
+        {
+
+            remainder = thread_workload;
+            if (i == num_threads - 1)
+            {
+                remainder += last_workload;
+            }
+            end = start + remainder;
+            temp[i].reserve((end - start) * other_terms);
+            thread_data[i] = {this, &other, start, end, &temp[i]};
+
+            pthread_create(&threads[i], nullptr, multiplication_thread, &thread_data[i]);
+
+            start = end;
+
+        }
+
+        for (int i = 0; i < num_threads; i++)
+        {
+            pthread_join(threads[i], nullptr);
+        }
+
+        for (int i = 0; i < num_threads; i++)
+        {
+            auto& thread_results = *(thread_data[i].result);
+            for (const auto& term : thread_results)
+            {
+                product.terms.push_back(term);  
+            }
+        }
+        return product;
+    }
+    else
+    {
+        for (const auto &i : this->terms)
+        {
+            for (const auto &j : other.terms)
+            {
+                product.terms.push_back({i.first + j.first, i.second * j.second});
+            }
+        }
+        return product;
+    }
+
+}
+
+polynomial polynomial::operator*(int scalar) const
+{
+
+    polynomial product;
+    for (const auto &i : this->terms)
+    {
+        product.terms.push_back({i.first, scalar * i.second});
+    }
     return product;
+}
+
+polynomial operator*(int scalar, const polynomial &other)
+{
+    return other * scalar;
 }
 
 
@@ -141,6 +240,11 @@ polynomial polynomial::operator%(const polynomial &divisor) const {
 
         for (const auto &term : r) {
             acc[term.first] += term.second;
+        }
+
+        for (const auto &term : d)
+        {
+            acc[term.first + power_diff] -= term.second * coeff_ratio;
         }
 
         r.clear();
