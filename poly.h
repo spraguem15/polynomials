@@ -4,6 +4,7 @@
 #include <vector>
 #include <utility>
 #include <cstddef>
+#include <algorithm>
 
 using power = size_t;
 using coeff = int;
@@ -12,6 +13,7 @@ class polynomial
 {
 private:
     std::vector<std::pair<power, coeff>> terms;
+    void canonicalize();
 public:
 
     friend void* multiplication_thread(void* arg);

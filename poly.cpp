@@ -8,17 +8,39 @@
 #include <stdexcept>
 #include <pthread.h>
 #include <cmath>
+#include <unordered_map>
 
 using power = size_t;
 using coeff = int;
 
-struct ThreadData {
-    const polynomial* subset_data;
-    const polynomial* full_data;
-    int start;
-    int end;
-    std::vector<std::pair<power, coeff>>* result;
-};
+static constexpr int NUM_THREADS = 8;
+
+// struct ThreadData {
+//     const polynomial* subset_data;
+//     const polynomial* full_data;
+//     int start;
+//     int end;
+//     std::vector<std::pair<power, coeff>>* result;
+// };
+
+void polynomial::canonicalize() {
+    if(terms.empty()) {
+        terms.push_back({0,0});
+        return;
+    }
+
+    std::sort(terms.begin(), terms.end(), [](const std::pair<power, coeff> &a, const std::pair<power, coeff> &b)
+                {
+                    return a.first > b.first;
+                });
+    
+    std::vector<std::pair<power, coeff>> combined;
+    combined.reserve(terms.size());
+
+    for (const auto &t : terms) {
+        //
+    }
+}
 
 polynomial::polynomial()
 {
