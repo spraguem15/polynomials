@@ -9,11 +9,21 @@
 #include <pthread.h>
 #include <cmath>
 #include <unordered_map>
+#include <unistd.h>
 
 using power = size_t;
 using coeff = int;
 
-static constexpr int NUM_THREADS = 8;
+static constexpr int MAX_THREADS = 8;
+static constexpr size_t J_BLOCK = 4096;
+
+static int detect_thread_count()
+{
+    long n = sysconf(_SC_NPROCESSORS_ONLN);
+    if (n < 1) n = 1;
+    if (n > MAX_THREADS) n = MAX_THREADS;
+    return static_cast<int>(n);
+}
 
 // struct ThreadData {
 //     const polynomial* subset_data;
@@ -150,18 +160,21 @@ struct DenseMultData {
 
 static void *dense_mult_worker(void *arg) {
     DenseMultData *d = static_cast<DenseMultData *>(arg);
-    const int64_t *a = d->a_data;
-    const int64_t *b = d->b_data;
-    int64_t *out = d->local_data;
-    const size_t bs = d->b_size;
-    const size_t i0 = d->i_start;
- 
-    for (size_t i = i0; i < d->i_end; ++i) {
-        int64_t av = a[i];
-        if (av == 0) continue;
-        int64_t *row = out + (i - i0);
-        for (size_t j = 0; j < bs; ++j) {
-            row[j] += av * b[j];
+    const int64_t * __restrict__ a   = d->a_data;
+    const int64_t * __restrict__ b   = d->b_data;
+    int64_t       * __restrict__ out = d->local_data;
+    const size_t bs    = d->b_size;
+    const size_t i0    = d->i_start;
+    const size_t i1    = d->i_end;
+    for (size_t jb = 0; jb < bs; jb += J_BLOCK) {
+        const size_t je = (jb + J_BLOCK < bs) ? (jb + J_BLOCK) : bs;
+        for (size_t i = i0; i < i1; ++i) {
+            const int64_t av = a[i];
+            if (av == 0) continue;
+            int64_t * __restrict__ row = out + (i - i0);
+            for (size_t j = jb; j < je; ++j) {
+                row[j] += av * b[j];
+            }
         }
     }
     return nullptr;
@@ -338,19 +351,22 @@ polynomial polynomial::operator*(const polynomial &other) const
         if (total_work < 50'000)
         {
             // Sequential -- thread overhead would dominate.
-            for (size_t i = 0; i < outer_size; ++i)
-            {
-                int64_t ai = A[i];
-                if (ai == 0) continue;
-                int64_t *row = result_dense.data() + i;
-                const int64_t *bp = B.data();
-                for (size_t j = 0; j < inner_size; ++j)
-                    row[j] += ai * bp[j];
+            const int64_t * __restrict__ bp = B.data();
+            int64_t       * __restrict__ rp = result_dense.data();
+            for (size_t jb = 0; jb < inner_size; jb += J_BLOCK) {
+                const size_t je = (jb + J_BLOCK < inner_size) ? (jb + J_BLOCK) : inner_size;
+                for (size_t i = 0; i < outer_size; ++i) {
+                    const int64_t ai = A[i];
+                    if (ai == 0) continue;
+                    int64_t * __restrict__ row = rp + i;
+                    for (size_t j = jb; j < je; ++j)
+                        row[j] += ai * bp[j];
+                }
             }
         }
         else
         {
-            int num_threads = NUM_THREADS;
+            int num_threads = detect_thread_count();
             if (static_cast<size_t>(num_threads) > outer_size)
                 num_threads = static_cast<int>(outer_size);
  
@@ -421,7 +437,7 @@ polynomial polynomial::operator*(const polynomial &other) const
         }
         else
         {
-            int num_threads = NUM_THREADS;
+            int num_threads = detect_thread_count();
             if (static_cast<size_t>(num_threads) > a_terms)
                 num_threads = static_cast<int>(a_terms);
  
