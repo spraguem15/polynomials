@@ -182,7 +182,7 @@ static void *sparse_mult_worker(void *arg) {
     auto &local = *d->local;
     local.reserve((d->a_end - d->a_start) * b.size() + 16);
 
-    for (size_t i = d->start; i < d->a_end; ++i) {
+    for (size_t i = d->a_start; i < d->a_end; ++i) {
         int64_t ac = a[i].second;
         if (ac == 0) {
             continue;
@@ -445,9 +445,9 @@ polynomial polynomial::operator*(int scalar) const
     result.terms.reserve(terms.size());
     for (const auto &i : this->terms)
     {
-        int64_t c = static_cast<int64_t>(t.second) * scalar;
+        int64_t c = static_cast<int64_t>(i.second) * scalar;
         if (c != 0) {
-            result.terms.push_back({t.first, static_cast<coeff>(c)});
+            result.terms.push_back({i.first, static_cast<coeff>(c)});
         }
         //product.terms.push_back({i.first, scalar * i.second});
     }
