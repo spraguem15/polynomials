@@ -160,7 +160,7 @@ static void *dense_mult_worker(void *arg) {
         size_t i_max = (k < d->a_size) ? k : (d->a_size - 1);
         int64_t sum = 0;
         for (size_t i = i_min; i <= i_max; ++i) {
-            sum += a[i] * b[k + 1];
+            sum += a[i] * b[k - i];
         }
         result[k] = sum;
     }

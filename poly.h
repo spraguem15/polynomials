@@ -16,7 +16,7 @@ private:
     void canonicalize();
 public:
 
-    friend void* multiplication_thread(void* arg);
+    //friend void* multiplication_thread(void* arg);
 
     /**
      * @brief Construct a new polynomial object that is the number 0 (ie. 0x^0)
@@ -43,6 +43,7 @@ public:
         terms.push_back(*it);
         it++;
        }
+       canonicalize();
     }
 
     /**
