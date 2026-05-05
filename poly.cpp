@@ -140,29 +140,29 @@ std::vector<std::pair<power, coeff>> polynomial::canonical_form() const {
 // }
 
 struct DenseMultData {
-    const std::vector<int64_t> *a;
-    const std::vector<int64_t> *b;
-    std::vector<int64_t> *result;
-    size_t k_start;
-    size_t k_end;
-    size_t a_size;
+    const int64_t *a_data;
+    const int64_t *b_data;
+    int64_t       *local_data;
+    size_t i_start;
+    size_t i_end;
     size_t b_size;
 };
 
 static void *dense_mult_worker(void *arg) {
     DenseMultData *d = static_cast<DenseMultData *>(arg);
-    const auto &a = *d->a;
-    const auto &b = *d->b;
-    auto &result = *d->result;
-
-    for (size_t k = d->k_start; k < d->k_end; ++k) {
-        size_t i_min = (k + 1 > d->b_size) ? (k + 1 - d->b_size) : 0;
-        size_t i_max = (k < d->a_size) ? k : (d->a_size - 1);
-        int64_t sum = 0;
-        for (size_t i = i_min; i <= i_max; ++i) {
-            sum += a[i] * b[k - i];
+    const int64_t *a = d->a_data;
+    const int64_t *b = d->b_data;
+    int64_t *out = d->local_data;
+    const size_t bs = d->b_size;
+    const size_t i0 = d->i_start;
+ 
+    for (size_t i = i0; i < d->i_end; ++i) {
+        int64_t av = a[i];
+        if (av == 0) continue;
+        int64_t *row = out + (i - i0);
+        for (size_t j = 0; j < bs; ++j) {
+            row[j] += av * b[j];
         }
-        result[k] = sum;
     }
     return nullptr;
 }
@@ -296,70 +296,99 @@ polynomial polynomial::operator*(const polynomial &other) const
     bool other_zero = (other.terms.size() == 1 && other.terms[0].second == 0);
     if (this_zero || other_zero)
         return polynomial();
-
+ 
     size_t a_terms = terms.size();
     size_t b_terms = other.terms.size();
-
+ 
     size_t a_deg = terms[0].first;
     size_t b_deg = other.terms[0].first;
     size_t a_size = a_deg + 1;
     size_t b_size = b_deg + 1;
     size_t result_size = a_size + b_size - 1;
-
+ 
     bool dense_a   = (a_terms * 4 >= a_size);
     bool dense_b   = (b_terms * 4 >= b_size);
     bool result_ok = (result_size <= 2'000'000);
     bool use_dense = dense_a && dense_b && result_ok;
-
+ 
     polynomial product;
     product.terms.clear();
-
+ 
     if (use_dense)
     {
-        std::vector<int64_t> a(a_size, 0);
-        std::vector<int64_t> b(b_size, 0);
-        for (const auto &t : terms)        a[t.first] = t.second;
-        for (const auto &t : other.terms)  b[t.first] = t.second;
+        // Build dense vectors.  Always make `a` the larger one so the
+        // outer (parallelizable) dimension has more work to spread.
+        const std::vector<std::pair<power, coeff>> *outer_terms = &terms;
+        const std::vector<std::pair<power, coeff>> *inner_terms = &other.terms;
+        size_t outer_size = a_size;
+        size_t inner_size = b_size;
+        if (a_size < b_size) {
+            std::swap(outer_terms, inner_terms);
+            std::swap(outer_size, inner_size);
+        }
+ 
+        std::vector<int64_t> A(outer_size, 0);
+        std::vector<int64_t> B(inner_size, 0);
+        for (const auto &t : *outer_terms) A[t.first] = t.second;
+        for (const auto &t : *inner_terms) B[t.first] = t.second;
         std::vector<int64_t> result_dense(result_size, 0);
-
-        size_t total_work = a_size * b_size;
-
+ 
+        size_t total_work = outer_size * inner_size;
+ 
         if (total_work < 50'000)
         {
-            for (size_t i = 0; i < a_size; ++i)
+            // Sequential -- thread overhead would dominate.
+            for (size_t i = 0; i < outer_size; ++i)
             {
-                int64_t ai = a[i];
+                int64_t ai = A[i];
                 if (ai == 0) continue;
-                for (size_t j = 0; j < b_size; ++j)
-                    result_dense[i + j] += ai * b[j];
+                int64_t *row = result_dense.data() + i;
+                const int64_t *bp = B.data();
+                for (size_t j = 0; j < inner_size; ++j)
+                    row[j] += ai * bp[j];
             }
         }
         else
         {
             int num_threads = NUM_THREADS;
-            if (static_cast<size_t>(num_threads) > result_size)
-                num_threads = static_cast<int>(result_size);
-
+            if (static_cast<size_t>(num_threads) > outer_size)
+                num_threads = static_cast<int>(outer_size);
+ 
             std::vector<pthread_t>      threads(num_threads);
             std::vector<DenseMultData>  tdata(num_threads);
-
-            size_t base  = result_size / num_threads;
-            size_t rem   = result_size % num_threads;
+            std::vector<std::vector<int64_t>> locals(num_threads);
+ 
+            size_t base  = outer_size / num_threads;
+            size_t rem   = outer_size % num_threads;
             size_t start = 0;
             for (int i = 0; i < num_threads; ++i)
             {
                 size_t chunk = base + (static_cast<size_t>(i) < rem ? 1 : 0);
-                tdata[i] = {&a, &b, &result_dense,
-                            start, start + chunk,
-                            a_size, b_size};
+                size_t local_len = chunk + inner_size - 1;
+                locals[i].assign(local_len, 0);
+                tdata[i] = {A.data(), B.data(), locals[i].data(),
+                            start, start + chunk, inner_size};
                 pthread_create(&threads[i], nullptr,
                                dense_mult_worker, &tdata[i]);
                 start += chunk;
             }
             for (int i = 0; i < num_threads; ++i)
                 pthread_join(threads[i], nullptr);
+ 
+            // Merge: each thread's local buffer covers global indices
+            // [i_start, i_start + local.size()).  Adjacent threads overlap
+            // by (inner_size - 1) entries -- the addition handles that.
+            for (int t = 0; t < num_threads; ++t)
+            {
+                const int64_t *lp = locals[t].data();
+                size_t off = tdata[t].i_start;
+                size_t len = locals[t].size();
+                int64_t *rp = result_dense.data() + off;
+                for (size_t k = 0; k < len; ++k)
+                    rp[k] += lp[k];
+            }
         }
-
+ 
         product.terms.reserve(result_size);
         for (size_t k = result_size; k > 0; --k)
         {
@@ -372,7 +401,7 @@ polynomial polynomial::operator*(const polynomial &other) const
     else
     {
         size_t total_work = a_terms * b_terms;
-
+ 
         if (total_work < 5'000)
         {
             std::map<power, int64_t> acc;
@@ -395,11 +424,11 @@ polynomial polynomial::operator*(const polynomial &other) const
             int num_threads = NUM_THREADS;
             if (static_cast<size_t>(num_threads) > a_terms)
                 num_threads = static_cast<int>(a_terms);
-
+ 
             std::vector<pthread_t>     threads(num_threads);
             std::vector<SparseMultData> tdata(num_threads);
             std::vector<std::unordered_map<power, int64_t>> locals(num_threads);
-
+ 
             size_t base  = a_terms / num_threads;
             size_t rem   = a_terms % num_threads;
             size_t start = 0;
@@ -415,18 +444,18 @@ polynomial polynomial::operator*(const polynomial &other) const
             }
             for (int i = 0; i < num_threads; ++i)
                 pthread_join(threads[i], nullptr);
-
+ 
             std::map<power, int64_t> final_map;
             for (auto &local : locals)
                 for (const auto &kv : local)
                     final_map[kv.first] += kv.second;
-
+ 
             for (auto it = final_map.rbegin(); it != final_map.rend(); ++it)
                 if (it->second != 0)
                     product.terms.push_back({it->first, static_cast<coeff>(it->second)});
         }
     }
-
+ 
     if (product.terms.empty())
         product.terms.push_back({0, 0});
     return product;
