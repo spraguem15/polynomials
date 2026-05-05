@@ -512,9 +512,15 @@ polynomial polynomial::operator+(const polynomial &other) const
 }
 
 polynomial polynomial::operator+(int value) const {
-    polynomial result = *this;
-    result.terms.push_back({0, value});
-    return result;
+//     polynomial result = *this;
+//     result.terms.push_back({0, value});
+//     return result;
+    if (value == 0)
+        return *this;
+    polynomial constant;
+    constant.terms.clear();
+    constant.terms.push_back({0, value});
+    return *this + constant;
 }
 
 polynomial operator+(int value, const polynomial &poly) {
