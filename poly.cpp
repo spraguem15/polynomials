@@ -463,12 +463,51 @@ polynomial operator*(int scalar, const polynomial &other)
 }
 
 
-polynomial polynomial::operator+(const polynomial &other) const {
+/*polynomial polynomial::operator+(const polynomial &other) const {
     polynomial result;
     result.terms.clear();
     result.terms.insert(result.terms.end(), terms.begin(), terms.end());
     result.terms.insert(result.terms.end(), other.terms.begin(), other.terms.end());
 
+    return result;
+}*/
+polynomial polynomial::operator+(const polynomial &other) const
+{
+    polynomial result;
+    result.terms.clear();
+    result.terms.reserve(terms.size() + other.terms.size());
+
+    auto it1 = terms.begin();
+    auto it2 = other.terms.begin();
+
+    while (it1 != terms.end() && it2 != other.terms.end())
+    {
+        if (it1->second == 0) { ++it1; continue; }
+        if (it2->second == 0) { ++it2; continue; }
+
+        if (it1->first > it2->first)
+        {
+            result.terms.push_back(*it1);
+            ++it1;
+        }
+        else if (it1->first < it2->first)
+        {
+            result.terms.push_back(*it2);
+            ++it2;
+        }
+        else
+        {
+            int sum = it1->second + it2->second;
+            if (sum != 0)
+                result.terms.push_back({it1->first, sum});
+            ++it1; ++it2;
+        }
+    }
+    while (it1 != terms.end())       { if (it1->second != 0) result.terms.push_back(*it1); ++it1; }
+    while (it2 != other.terms.end()) { if (it2->second != 0) result.terms.push_back(*it2); ++it2; }
+
+    if (result.terms.empty())
+        result.terms.push_back({0, 0});
     return result;
 }
 
@@ -482,7 +521,7 @@ polynomial operator+(int value, const polynomial &poly) {
     return poly + value;
 }
 
-polynomial polynomial::operator%(const polynomial &divisor) const {
+/*polynomial polynomial::operator%(const polynomial &divisor) const {
     auto r = this->canonical_form();
     auto d = divisor.canonical_form();
 
@@ -528,5 +567,75 @@ polynomial polynomial::operator%(const polynomial &divisor) const {
     }
     polynomial result;
     result.terms = r;
+    return result;
+}*/
+
+polynomial polynomial::operator%(const polynomial &divisor) const
+{
+    if (divisor.terms.size() == 1 && divisor.terms[0].second == 0)
+        throw std::invalid_argument("Modulo by zero polynomial");
+
+    std::vector<std::pair<power, coeff>> r = terms;
+    const auto &d = divisor.terms;
+
+    if (r.size() == 1 && r[0].second == 0)
+        return polynomial();
+
+    power d_deg  = d[0].first;
+    coeff d_lead = d[0].second;
+
+    while (!r.empty() && r[0].first >= d_deg)
+    {
+        if (r[0].second == 0) { r.erase(r.begin()); continue; }
+        if (r[0].second % d_lead != 0) break;
+
+        coeff coeff_ratio = r[0].second / d_lead;
+        if (coeff_ratio == 0) break;
+        power power_diff = r[0].first - d_deg;
+
+        std::vector<std::pair<power, coeff>> new_r;
+        new_r.reserve(r.size() + d.size());
+
+        size_t i = 0, j = 0;
+        while (i < r.size() && j < d.size())
+        {
+            power r_p = r[i].first;
+            power d_p = d[j].first + power_diff;
+            if (r_p > d_p)
+            {
+                if (r[i].second != 0) new_r.push_back(r[i]);
+                ++i;
+            }
+            else if (r_p < d_p)
+            {
+                coeff val = -d[j].second * coeff_ratio;
+                if (val != 0) new_r.push_back({d_p, val});
+                ++j;
+            }
+            else
+            {
+                coeff val = r[i].second - d[j].second * coeff_ratio;
+                if (val != 0) new_r.push_back({r_p, val});
+                ++i; ++j;
+            }
+        }
+        while (i < r.size())
+        {
+            if (r[i].second != 0) new_r.push_back(r[i]);
+            ++i;
+        }
+        while (j < d.size())
+        {
+            coeff val = -d[j].second * coeff_ratio;
+            if (val != 0) new_r.push_back({d[j].first + power_diff, val});
+            ++j;
+        }
+        r = std::move(new_r);
+    }
+
+    if (r.empty())
+        return polynomial();
+    polynomial result;
+    result.terms = std::move(r);
     return result;
 }
