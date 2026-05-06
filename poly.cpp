@@ -139,24 +139,54 @@ static std::vector<std::pair<power,coeff>> fft_multiply_impl(
     fft(fb_hi, false);
 
     // result = a_lo*b_lo + (a_lo*b_hi + a_hi*b_lo)*BASE + a_hi*b_hi*BASE^2
-    std::vector<cd> fres(n);
-    for (size_t i = 0; i < n; i++) {
-        cd ll = fa_lo[i] * fb_lo[i];
-        cd lh = fa_lo[i] * fb_hi[i] + fa_hi[i] * fb_lo[i];
-        cd hh = fa_hi[i] * fb_hi[i];
-        fres[i] = ll + lh * (double)SPLIT_BASE + hh * (double)((long long)SPLIT_BASE * SPLIT_BASE);
-    }
-    fft(fres, true);
 
-    std::vector<std::pair<power,coeff>> res;
-    res.reserve(result_size);
-    for (size_t k = result_size; k > 0; --k) {
-        size_t idx = k - 1;
-        long long v = llround(fres[idx].real());
-        if (v != 0)
-            res.push_back({idx, static_cast<coeff>(v)});
-    }
-    return res; // may be empty (caller interprets as zero poly)
+    std::vector<cd> fll(n), flh(n), fhh(n);
+
+for (size_t i = 0; i < n; i++) {
+    fll[i] = fa_lo[i] * fb_lo[i];
+    flh[i] = fa_lo[i] * fb_hi[i] + fa_hi[i] * fb_lo[i];
+    fhh[i] = fa_hi[i] * fb_hi[i];
+}
+
+fft(fll, true);
+fft(flh, true);
+fft(fhh, true);
+
+std::vector<std::pair<power, coeff>> res;
+res.reserve(result_size);
+
+for (size_t k = result_size; k > 0; --k) {
+    size_t idx = k - 1;
+
+    long long ll = llround(fll[idx].real());
+    long long lh = llround(flh[idx].real());
+    long long hh = llround(fhh[idx].real());
+
+    long long v = ll + lh * SPLIT_BASE
+                    + hh * 1LL * SPLIT_BASE * SPLIT_BASE;
+
+    if (v != 0)
+        res.push_back({idx, static_cast<coeff>(v)});
+}
+return res;
+    // std::vector<cd> fres(n);
+    // for (size_t i = 0; i < n; i++) {
+    //     cd ll = fa_lo[i] * fb_lo[i];
+    //     cd lh = fa_lo[i] * fb_hi[i] + fa_hi[i] * fb_lo[i];
+    //     cd hh = fa_hi[i] * fb_hi[i];
+    //     fres[i] = ll + lh * (double)SPLIT_BASE + hh * (double)((long long)SPLIT_BASE * SPLIT_BASE);
+    // }
+    // fft(fres, true);
+
+    // std::vector<std::pair<power,coeff>> res;
+    // res.reserve(result_size);
+    // for (size_t k = result_size; k > 0; --k) {
+    //     size_t idx = k - 1;
+    //     long long v = llround(fres[idx].real());
+    //     if (v != 0)
+    //         res.push_back({idx, static_cast<coeff>(v)});
+    // }
+    // return res; // may be empty (caller interprets as zero poly)
 }
 
 void polynomial::canonicalize() {
