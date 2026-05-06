@@ -821,13 +821,13 @@ polynomial polynomial::operator*(const polynomial& other) const
 
     // ── FFT path: large dense polynomials ────────────────────────────────────
     // FFT is O(n log n), much faster than O(n^2) for large n.
-    if (dense_a && dense_b && result_size > 4096) {
-        auto res = fft_multiply_impl(terms, other.terms, result_size);
-        polynomial prod;
-        if (res.empty()) return prod; // zero
-        prod.terms = std::move(res);
-        return prod;
-    }
+    // if (dense_a && dense_b && result_size > 4096) {
+    //     auto res = fft_multiply_impl(terms, other.terms, result_size);
+    //     polynomial prod;
+    //     if (res.empty()) return prod; // zero
+    //     prod.terms = std::move(res);
+    //     return prod;
+    // }
 
     // ── Dense O(n^2) path: small/medium dense polynomials ────────────────────
     if (dense_a && dense_b && result_size <= 2'000'000) {
