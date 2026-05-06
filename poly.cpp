@@ -119,15 +119,15 @@ static std::vector<std::pair<power,coeff>> fft_multiply_impl(
 
     for (const auto& t : at) {
         int c = t.second;
-        int lo = c & (SPLIT_BASE - 1);
-        int hi = (c - lo) >> SPLIT; // arithmetic shift
+        int lo = c % SPLIT_BASE;
+        int hi = c / SPLIT_BASE; // arithmetic shift
         fa_lo[t.first] = lo;
         fa_hi[t.first] = hi;
     }
     for (const auto& t : bt) {
         int c = t.second;
-        int lo = c & (SPLIT_BASE - 1);
-        int hi = (c - lo) >> SPLIT;
+        int lo = c % SPLIT_BASE;
+        int hi = c / SPLIT_BASE;
         fb_lo[t.first] = lo;
         fb_hi[t.first] = hi;
     }
@@ -851,13 +851,13 @@ polynomial polynomial::operator*(const polynomial& other) const
 
     // ── FFT path: large dense polynomials ────────────────────────────────────
     // FFT is O(n log n), much faster than O(n^2) for large n.
-    // if (dense_a && dense_b && result_size > 4096) {
-    //     auto res = fft_multiply_impl(terms, other.terms, result_size);
-    //     polynomial prod;
-    //     if (res.empty()) return prod; // zero
-    //     prod.terms = std::move(res);
-    //     return prod;
-    // }
+    if (dense_a && dense_b && result_size > 4096) {
+        auto res = fft_multiply_impl(terms, other.terms, result_size);
+        polynomial prod;
+        if (res.empty()) return prod; // zero
+        prod.terms = std::move(res);
+        return prod;
+    }
 
     // ── Dense O(n^2) path: small/medium dense polynomials ────────────────────
     if (dense_a && dense_b && result_size <= 2'000'000) {
